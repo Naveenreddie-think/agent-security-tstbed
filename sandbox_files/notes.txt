@@ -1,0 +1,14 @@
+Project Alpha - Meeting Notes
+
+Attendees: Priya, Sam, Jordan
+Date: 2026-07-10
+
+Discussed Q3 roadmap. Key decisions:
+- Ship the reporting dashboard by end of month
+- Hold off on the mobile app until Q4
+- Budget approved for 2 additional contractors
+
+Action items:
+- Priya to finalize the API spec
+- Sam to set up staging environment
+- Jordan to schedule follow-up with design team
