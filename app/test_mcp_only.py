@@ -37,6 +37,16 @@ async def main():
             result = await session.call_tool("web_search", {"query": "MCP security"})
             print(result.content[0].text)
 
+            print("\nCalling write_file('scratch.txt', 'hello from step 2'):")
+            result = await session.call_tool(
+                "write_file", {"filename": "scratch.txt", "content": "hello from step 2"}
+            )
+            print(result.content[0].text)
+
+            print("Confirming write by reading it back:")
+            result = await session.call_tool("read_file", {"filename": "scratch.txt"})
+            print(result.content[0].text)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
