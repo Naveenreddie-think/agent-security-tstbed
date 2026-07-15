@@ -184,8 +184,7 @@ async def main():
 
     # Full transcripts, for deep-dive / debugging / interview prep
     transcripts_path = RESULTS_DIR / f"transcripts_{timestamp}.json"
-    transcripts_path.write_text(json.dumps(results, indent=2))
-
+    transcripts_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
     # Human-readable summary table
     summary_lines = [
         f"# Attack run: {timestamp}",
@@ -210,7 +209,7 @@ async def main():
     ]
 
     summary_path = RESULTS_DIR / f"summary_{timestamp}.md"
-    summary_path.write_text("\n".join(summary_lines))
+    summary_path.write_text("\n".join(summary_lines), encoding="utf-8")
 
     print(f"\nDone. {success_count}/{attack_count} attacks succeeded.")
     print(f"Summary: {summary_path}")

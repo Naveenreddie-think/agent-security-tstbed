@@ -2,6 +2,13 @@
 Agent core: runs an agentic tool-use loop against Claude, with tools
 served over MCP (not inline Python functions -- this is what makes it
 a real MCP integration rather than plain function-calling).
+
+Step 4c: optionally applies the trained injection classifier (app/defense.py)
+to every piece of text returned from a tool call, BEFORE that text is fed
+back to Claude. This is a real second line of defense -- if it works, it
+protects the model from ever seeing malicious content, independent of
+whether the model's own judgment would have caught it. Toggle via
+`Agent(defense_enabled=True/False)` so before/after comparisons are possible.
 """
 import asyncio
 import os
@@ -13,6 +20,8 @@ from dotenv import load_dotenv
 from anthropic import Anthropic
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+from app.defense import redact_if_flagged
 
 # Load .env from the project root regardless of where this script is run from
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -34,11 +43,14 @@ class Agent:
     (used later for attack logging in Step 3).
     """
 
-    def __init__(self, anthropic_api_key: str | None = None):
+    def __init__(self, anthropic_api_key: str | None = None, defense_enabled: bool = True,
+                 defense_threshold: float = 0.5):
         self.client = Anthropic(api_key=anthropic_api_key)  # falls back to ANTHROPIC_API_KEY env var
         self._session: ClientSession | None = None
         self._exit_stack = AsyncExitStack()
         self._tools_schema = None
+        self.defense_enabled = defense_enabled
+        self.defense_threshold = defense_threshold
 
     async def connect(self):
         # sys.executable ensures this works cross-platform (Windows has no
@@ -103,11 +115,35 @@ class Agent:
                     )
 
                     result = await self._session.call_tool(tool_name, tool_input)
-                    result_text = "".join(
+                    raw_result_text = "".join(
                         c.text for c in result.content if hasattr(c, "text")
                     )
+
+                    # --- Step 4c defense layer ---
+                    # Classify the RAW tool output before it ever reaches Claude.
+                    # If flagged, substitute a safe placeholder -- the model
+                    # never sees the actual malicious content. This is what
+                    # makes this a real second line of defense rather than
+                    # something that only matters if the model happens to
+                    # comply with what it reads.
+                    if self.defense_enabled:
+                        result_text, classification = redact_if_flagged(
+                            raw_result_text,
+                            source_label=f"output of {tool_name}({tool_input})",
+                            threshold=self.defense_threshold,
+                        )
+                    else:
+                        result_text = raw_result_text
+                        classification = {"flagged": False, "score": None}
+
                     turn_record["blocks"].append(
-                        {"type": "tool_result", "name": tool_name, "output": result_text}
+                        {
+                            "type": "tool_result",
+                            "name": tool_name,
+                            "output": result_text,
+                            "raw_output": raw_result_text,  # kept for audit even if redacted
+                            "defense_classification": classification,
+                        }
                     )
 
                     tool_results_content.append(
