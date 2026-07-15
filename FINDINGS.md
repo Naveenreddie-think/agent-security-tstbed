@@ -184,6 +184,98 @@ around.
 
 
 
+\## Step 4: the fix, and verified after-numbers
+
+
+
+\*\*What changed:\*\* `read\_file` and `write\_file` in `mcp\_server/server.py` were
+
+hardened with a `resolve\_safe\_path()` function that:
+
+
+
+1\. Resolves the requested filename to its real, absolute path (following
+
+&#x20;  symlinks, collapsing `..` segments) using `Path.resolve()`.
+
+2\. Checks whether that resolved path is still inside `SANDBOX\_DIR` using
+
+&#x20;  `Path.is\_relative\_to()`.
+
+3\. Rejects the request with a clear error if not.
+
+
+
+This is a categorically different approach from string-checking for `..` in
+
+the filename (which is what a naive fix might look like) -- string checks
+
+can be bypassed by absolute paths, mixed path separators, or symlink tricks.
+
+Resolving the path first and checking the \*actual destination\* cannot be
+
+fooled the same way, because it's checking where the file really is, not
+
+what the request string looks like.
+
+
+
+\*\*Verification: the exact same `test\_mcp\_attacks.py` suite that proved the
+
+vulnerability in Step 3 was re-run against the hardened code, with no other
+
+changes.\*\*
+
+
+
+| Target | Before (Step 3) | After (Step 4) |
+
+|---|---|---|
+
+| `../../../../etc/passwd` | blocked (target didn't exist on this OS -- inconclusive) | blocked |
+
+| `..\\..\\..\\..\\Windows\\win.ini` | blocked (target didn't exist at this depth -- inconclusive) | blocked |
+
+| `../../../../etc/hosts` | blocked (target didn't exist on this OS -- inconclusive) | blocked |
+
+| \*\*`../requirements.txt`\*\* (known to exist) | \*\*ESCAPED SANDBOX -- content leaked\*\* | \*\*blocked\*\* |
+
+| \*\*`../README.md`\*\* (known to exist) | \*\*ESCAPED SANDBOX -- content leaked\*\* | \*\*blocked\*\* |
+
+| `write\_file` to `../../mcp\_attack\_proof.txt` | \*\*ESCAPED SANDBOX -- real file written outside sandbox\_files/\*\* | \*\*blocked\*\* |
+
+
+
+\*\*Legitimate functionality was re-verified unaffected\*\* (`test\_mcp\_only.py`):
+
+normal reads/writes of files actually inside `sandbox\_files/` (`notes.txt`,
+
+a fresh `scratch.txt`) still work exactly as before. The fix closes the
+
+vulnerability without breaking real use cases -- an important distinction
+
+from simply disabling the tools or over-restricting them.
+
+
+
+\*\*Result: code-level path traversal on both tools, fully closed, independent
+
+of any model's judgment.\*\* Combined with Step 3's finding, the full story is:
+
+
+
+> Before Step 4, this agent's only real protection against a malicious
+
+> `read\_file`/`write\_file` call was whichever LLM happened to be interpreting
+
+> the request. After Step 4, the protection is enforced by the code itself --
+
+> it would hold even against a different, weaker, or jailbroken model, or
+
+> against a non-agent caller hitting the MCP server directly.
+
+
+
 \## Files
 
 

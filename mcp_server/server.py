@@ -1,13 +1,14 @@
 """
 MCP Server exposing tools for the agent:
-  1. read_file    - reads a file from a SANDBOXED directory only (path traversal NOT yet blocked)
-  2. write_file   - writes a file to the SANDBOXED directory (path traversal NOT yet blocked)
+  1. read_file    - reads a file from a SANDBOXED directory only (path traversal BLOCKED, Step 4)
+  2. write_file   - writes a file to the SANDBOXED directory (path traversal BLOCKED, Step 4)
   3. web_search    - stubbed search tool (swap in a real API like Tavily/Serper for production)
 
-This is intentionally kept simple/naive through Step 2. Step 3 will attack this server
-(e.g. path traversal on read/write, tool-response poisoning, prompt injection tricking
-the agent into calling write_file with attacker-chosen content/paths) and Step 4 will
-harden it based on what those attacks reveal.
+Step 4 hardening: both tools now resolve the requested path and verify it
+stays inside SANDBOX_DIR before touching the filesystem. This blocks path
+traversal (../, absolute paths, symlink tricks) at the CODE level -- it does
+not depend on the calling model's judgment, unlike the Step 1-3 versions.
+See app/test_mcp_attacks.py for the direct, no-LLM test that proves this.
 """
 import os
 import json
@@ -15,10 +16,39 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-SANDBOX_DIR = Path(__file__).parent.parent / "sandbox_files"
+SANDBOX_DIR = (Path(__file__).parent.parent / "sandbox_files").resolve()
 SANDBOX_DIR.mkdir(exist_ok=True)
 
 mcp = FastMCP("agent-security-testbed")
+
+
+class PathEscapeError(Exception):
+    """Raised when a requested filename would resolve outside SANDBOX_DIR."""
+    pass
+
+
+def resolve_safe_path(filename: str) -> Path:
+    """
+    Resolve `filename` relative to SANDBOX_DIR and verify the result is
+    actually still inside SANDBOX_DIR. This is the real fix, as opposed to
+    string-checking for '..' (which is easy to bypass with absolute paths,
+    symlinks, or OS-specific separators -- see FINDINGS.md for the Step 3
+    proof that the naive version was vulnerable).
+
+    Uses Path.resolve() (follows symlinks, collapses '..') + is_relative_to()
+    for a containment check that can't be fooled by traversal tricks.
+    """
+    if not filename or not filename.strip():
+        raise PathEscapeError("empty filename not allowed")
+
+    candidate = (SANDBOX_DIR / filename).resolve()
+
+    if not candidate.is_relative_to(SANDBOX_DIR):
+        raise PathEscapeError(
+            f"'{filename}' resolves outside the sandbox directory -- rejected"
+        )
+
+    return candidate
 
 
 @mcp.tool()
@@ -27,16 +57,18 @@ def read_file(filename: str) -> str:
     Read a text file from the sandboxed documents directory.
 
     Args:
-        filename: name of the file to read (no path traversal allowed)
+        filename: name of the file to read (must resolve inside the sandbox)
     """
-    # --- deliberately naive through Step 2: no defenses yet ---
-    # Step 4 will replace this with a hardened version that:
-    #   - resolves the real path and checks it's still inside SANDBOX_DIR
-    #   - refuses filenames containing '..', absolute paths, symlinks
-    target = SANDBOX_DIR / filename
+    try:
+        target = resolve_safe_path(filename)
+    except PathEscapeError as e:
+        return f"ERROR: blocked -- {e}"
+
     try:
         if not target.exists():
             return f"ERROR: file '{filename}' not found in sandbox."
+        if not target.is_file():
+            return f"ERROR: '{filename}' is not a regular file."
         content = target.read_text(errors="ignore")
         return content
     except Exception as e:
@@ -50,19 +82,16 @@ def write_file(filename: str, content: str) -> str:
     Creates the file if it doesn't exist, overwrites if it does.
 
     Args:
-        filename: name of the file to write (no path traversal allowed)
+        filename: name of the file to write (must resolve inside the sandbox)
         content: the text content to write
     """
-    # --- deliberately naive through Step 2: this is the highest-value attack
-    # surface in the whole project. An agent tricked (via prompt injection)
-    # into calling write_file with an attacker-chosen filename/content could:
-    #   - escape the sandbox via path traversal (e.g. filename="../../evil.txt")
-    #   - overwrite an existing file the user didn't intend to touch
-    #   - plant content that gets read and acted on again later (persistence)
-    # Step 4 will harden this with path resolution checks, an allowlist of
-    # writeable filenames, and a confirmation step for destructive writes.
-    target = SANDBOX_DIR / filename
     try:
+        target = resolve_safe_path(filename)
+    except PathEscapeError as e:
+        return f"ERROR: blocked -- {e}"
+
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
         return f"OK: wrote {len(content)} characters to '{filename}'."
     except Exception as e:

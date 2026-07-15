@@ -60,9 +60,12 @@ numbers are real, not retrofitted:
 * &#x20;     but the underlying tool code has zero real protection (confirmed path traversal on both
 * &#x20;     `read\_file` and `write\_file`). See \*\*\[FINDINGS.md](FINDINGS.md)\*\* for the full writeup.
 * &#x20;     \*(you are here)\*
-* \[ ] **Step 4 — Defenses.** Input/output classifiers, tool permission scoping,
-path sanitization, and re-running the Step 3 test suite to measure the
-actual before/after attack success rate (not just claimed).
+* \- \[x] \*\*Step 4 — Defenses.\*\* Hardened `read\_file`/`write\_file` with real path
+* &#x20;     resolution + containment checks (not naive string matching). Re-ran the
+* &#x20;     exact Step 3 code-level attack suite: all previously-successful traversal
+* &#x20;     attacks now blocked, legitimate functionality unaffected. See
+* &#x20;     \*\*\[FINDINGS.md](FINDINGS.md)\*\* for the full before/after comparison.
+* &#x20;     \*(you are here)\*
 * \[ ] **Step 5 — Ship.** Streamlit "try an attack" demo UI, deploy to Fly.io/Render,
 rate limiting, cost caps, basic observability.
 
