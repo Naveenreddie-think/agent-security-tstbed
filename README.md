@@ -65,6 +65,12 @@ numbers are real, not retrofitted:
 * &#x20;     exact Step 3 code-level attack suite: all previously-successful traversal
 * &#x20;     attacks now blocked, legitimate functionality unaffected. See
 * &#x20;     \*\*\[FINDINGS.md](FINDINGS.md)\*\* for the full before/after comparison.
+* &#x20;     
+* \- \[x] \*\*Step 4b — Purpose-built injection classifier.\*\* Built a taxonomy of 6
+* &#x20;     injection techniques with held-out phrasing families, trained a TF-IDF +
+* &#x20;     Logistic Regression classifier, and compared it against a naive keyword
+* &#x20;     baseline. Result: 100% recall / 100% precision on held-out novel phrasing
+* &#x20;     vs. 42% recall for the keyword baseline. See \*\*\[FINDINGS.md](FINDINGS.md)\*\*.
 * &#x20;     \*(you are here)\*
 * \[ ] **Step 5 — Ship.** Streamlit "try an attack" demo UI, deploy to Fly.io/Render,
 rate limiting, cost caps, basic observability.

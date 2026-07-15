@@ -274,6 +274,92 @@ of any model's judgment.\*\* Combined with Step 3's finding, the full story is:
 
 > against a non-agent caller hitting the MCP server directly.
 
+\## Step 4b: Purpose-built injection classifier (not relying on model judgment)
+
+
+
+\*\*Motivation:\*\* Step 4's path-containment fix only covers path traversal.
+
+It does nothing for injection \*content\* itself (e.g. the salary-leak style
+
+attack) -- that defense still relied entirely on Claude's own judgment.
+
+This step builds and evaluates a classifier that detects injection attempts
+
+independent of any model's judgment.
+
+
+
+\*\*Method:\*\* Defined 6 attack technique categories (direct override, authority
+
+impersonation, roleplay jailbreak, indirect document injection, obfuscation/
+
+encoding, exfiltration framing), each with multiple structurally distinct
+
+phrasing families. Training uses one set of families; the held-out test set
+
+uses entirely different phrasing patterns per category, never seen in
+
+training -- this measures generalization, not memorization.
+
+
+
+\*\*Result (held-out test set, 17 examples):\*\*
+
+
+
+| Metric | Keyword baseline | TF-IDF + LogReg classifier |
+
+|---|---|---|
+
+| Precision | 1.00 | 1.00 |
+
+| Recall | 0.42 | 1.00 |
+
+| False positive rate | 0.00 | 0.00 |
+
+
+
+The naive keyword baseline missed 3 of 6 attack categories entirely on novel
+
+phrasing (`direct\_override`, `exfiltration\_framing`, `obfuscation\_encoding`
+
+all scored 0/2) -- it only catches attacks phrased almost exactly like its
+
+hardcoded patterns. The trained classifier caught all 6 categories at their
+
+novel phrasing, including base64-encoded and character-spaced obfuscation.
+
+
+
+\*\*Bug caught and fixed along the way:\*\* an earlier version trained on only
+
+5 benign examples (vs. \~75 augmented malicious examples) and overfit toward
+
+predicting "malicious" for almost anything unfamiliar -- it flagged "What's
+
+the capital of France?" as an attack. Fixed by expanding and augmenting
+
+benign training examples to comparable diversity, which brought the false
+
+positive rate from 0.67 down to 0.00 on the held-out set.
+
+
+
+\*\*Honest limitation:\*\* the held-out test set has only 17 examples. These
+
+results are a promising directional signal, not a statistically robust,
+
+production-grade claim -- more held-out examples per category would be
+
+needed before trusting these numbers at face value.
+
+
+
+See `app/attack\_taxonomy.py`, `app/train\_injection\_classifier.py`,
+
+`attack\_results/classifier\_eval.md`.
+
 
 
 \## Files
@@ -285,4 +371,6 @@ of any model's judgment.\*\* Combined with Step 3's finding, the full story is:
 \- `app/test\_mcp\_attacks.py` — code-level attack suite (no model, direct MCP calls)
 
 \- `attack\_results/` — saved transcripts and summaries from each `run\_attacks.py` run
+
+\- `mcp\_server/server.py` — hardened `read\_file`/`write\_file` (Step 4)
 
